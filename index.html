@@ -5,46 +5,79 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FlashUSDT Panel</title>
 <style>
-  body { background:#0d1117; color:#c9d1d9; font-family:monospace; max-width:600px; margin:50px auto; padding:20px; }
-  h1 { color:#f0b90b; }
-  input,button,select { width:100%; padding:10px; margin:8px 0; background:#161b22; border:1px solid #30363d; color:#c9d1d9; border-radius:5px; }
-  button { background:#f0b90b; color:#000; font-weight:bold; cursor:pointer; }
+  body { background:#0d1117; color:#c9d1d9; font-family:monospace; max-width:600px; margin:30px auto; padding:20px; }
+  h1 { color:#f0b90b; text-align:center; }
+  .box { background:#161b22; padding:15px; border-radius:8px; margin:10px 0; border:1px solid #30363d; }
+  label { display:block; margin:8px 0 4px; color:#8b949e; font-size:13px; }
+  input,select,button { width:100%; padding:10px; background:#0d1117; border:1px solid #30363d; color:#c9d1d9; border-radius:5px; box-sizing:border-box; }
+  button { background:#f0b90b; color:#000; font-weight:bold; cursor:pointer; margin-top:10px; }
   button:hover { background:#ffd700; }
-  .result { margin-top:15px; padding:10px; background:#161b22; border-radius:5px; white-space:pre-wrap; }
-  .warn { color:#ff6b6b; font-size:12px; }
+  .bal { color:#3fb950; font-size:14px; }
+  .warn { color:#ff6b6b; font-size:12px; text-align:center; }
+  .result { margin-top:10px; padding:10px; background:#0d1117; border-radius:5px; white-space:pre-wrap; font-size:12px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 </style>
 </head>
 <body>
 <h1>⚡ FlashUSDT Panel</h1>
-<p class="warn">Research/educational only. Fake USDT token — zero real value. Not real Tether.</p>
-<label>Network</label>
-<select id="network">
-  <option value="testnet">BSC Testnet (free)</option>
-  <option value="mainnet">BSC Mainnet (needs funded wallet)</option>
-</select>
-<label>Victim Wallet Address</label>
-<input id="victim" placeholder="0x..." />
-<label>Amount (fake USDT)</label>
-<input id="amount" placeholder="1000000" />
-<button onclick="flash()">⚡ FLASH SEND</button>
-<div class="result" id="result">Waiting...</div>
+<p class="warn">Research/educational only. Fake USDT — zero real value. Not real Tether.</p>
+
+<div class="box">
+  <div class="grid">
+    <div><label>Deployer Private Key</label><input id="pk" placeholder="0x..." /></div>
+    <div><label>Network</label>
+      <select id="network">
+        <option value="testnet">BSC Testnet (free)</option>
+        <option value="mainnet">BSC Mainnet (funded)</option>
+      </select>
+    </div>
+  </div>
+  <div class="grid">
+    <div><label>BNB Balance</label><span class="bal" id="bnbBal">-</span></div>
+    <div><label>My Fake USDT</label><span class="bal" id="usdtBal">-</span></div>
+  </div>
+  <button onclick="checkBal()">🔄 Refresh Balances</button>
+</div>
+
+<div class="box">
+  <label>Victim Wallet Address</label><input id="victim" placeholder="0x..." />
+  <label>Amount (fake USDT)</label><input id="amount" placeholder="1000000" value="1000000" />
+  <button onclick="flash()">⚡ FLASH SEND</button>
+  <div class="result" id="result">Waiting...</div>
+</div>
 
 <script>
+async function checkBal() {
+  const pk = document.getElementById('pk').value;
+  const net = document.getElementById('network').value;
+  if(!pk){ alert('Enter private key first'); return; }
+  const res = document.getElementById('result');
+  res.textContent = "Checking...";
+  try {
+    const r = await fetch('/api/balance', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pk,network:net})});
+    const d = await r.json();
+    if(d.status==='success'){
+      document.getElementById('bnbBal').textContent = d.bnb + ' BNB';
+      document.getElementById('usdtBal').textContent = d.usdt + ' USDT (fake)';
+      res.textContent = "Balances updated";
+    } else { res.textContent = JSON.stringify(d); }
+  } catch(e){ res.textContent = "Error: "+e; }
+}
+
 async function flash() {
+  const pk = document.getElementById('pk').value;
   const net = document.getElementById('network').value;
   const victim = document.getElementById('victim').value;
   const amount = document.getElementById('amount').value;
   const res = document.getElementById('result');
-  res.textContent = "Sending...";
+  if(!pk||!victim){ alert('Need private key + victim address'); return; }
+  res.textContent = "⚡ Flashing...";
   try {
-    const r = await fetch('/api/flash', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({network:net, victim:victim, amount:amount})
-    });
+    const r = await fetch('/api/flash', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pk,network:net,victim,amount})});
     const d = await r.json();
     res.textContent = JSON.stringify(d, null, 2);
-  } catch(e) { res.textContent = "Error: " + e; }
+    checkBal();
+  } catch(e){ res.textContent = "Error: "+e; }
 }
 </script>
 </body>
