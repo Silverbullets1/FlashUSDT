@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlashUSDT Panel</title>
+<style>
+  body { background:#0d1117; color:#c9d1d9; font-family:monospace; max-width:600px; margin:50px auto; padding:20px; }
+  h1 { color:#f0b90b; }
+  input,button,select { width:100%; padding:10px; margin:8px 0; background:#161b22; border:1px solid #30363d; color:#c9d1d9; border-radius:5px; }
+  button { background:#f0b90b; color:#000; font-weight:bold; cursor:pointer; }
+  button:hover { background:#ffd700; }
+  .result { margin-top:15px; padding:10px; background:#161b22; border-radius:5px; white-space:pre-wrap; }
+  .warn { color:#ff6b6b; font-size:12px; }
+</style>
+</head>
+<body>
+<h1>⚡ FlashUSDT Panel</h1>
+<p class="warn">Research/educational only. Fake USDT token — zero real value. Not real Tether.</p>
+<label>Network</label>
+<select id="network">
+  <option value="testnet">BSC Testnet (free)</option>
+  <option value="mainnet">BSC Mainnet (needs funded wallet)</option>
+</select>
+<label>Victim Wallet Address</label>
+<input id="victim" placeholder="0x..." />
+<label>Amount (fake USDT)</label>
+<input id="amount" placeholder="1000000" />
+<button onclick="flash()">⚡ FLASH SEND</button>
+<div class="result" id="result">Waiting...</div>
+
+<script>
+async function flash() {
+  const net = document.getElementById('network').value;
+  const victim = document.getElementById('victim').value;
+  const amount = document.getElementById('amount').value;
+  const res = document.getElementById('result');
+  res.textContent = "Sending...";
+  try {
+    const r = await fetch('/api/flash', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({network:net, victim:victim, amount:amount})
+    });
+    const d = await r.json();
+    res.textContent = JSON.stringify(d, null, 2);
+  } catch(e) { res.textContent = "Error: " + e; }
+}
+</script>
+</body>
+</html>
