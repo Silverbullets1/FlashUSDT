@@ -48,4 +48,8 @@ def flash():
 
 @app.route('/')
 def index():
-    return "FlashUSDT API - POST /api/flash"
+    try:
+        with open("index.html", "r") as f:
+            return f.read()
+    except:
+        return "FlashUSDT API - POST /api/flash"
