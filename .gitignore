@@ -1,0 +1,6 @@
+.env
+deployed_contract*.txt
+build/
+venv/
+__pycache__/
+*.pyc

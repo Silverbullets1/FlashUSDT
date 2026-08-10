@@ -1,7 +1,11 @@
 {
   "version": 2,
+  "builds": [
+    { "src": "app.py", "use": "@vercel/python" }
+  ],
   "routes": [
     { "src": "/api/flash", "dest": "app.py" },
-    { "src": "/(.*)", "dest": "index.html" }
+    { "src": "/api/balance", "dest": "app.py" },
+    { "src": "/(.*)", "dest": "app.py" }
   ]
 }
